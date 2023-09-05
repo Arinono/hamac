@@ -1,0 +1,109 @@
+version: '3.8'
+
+x-defaults: &defaults
+  restart: always
+  environment: &env
+    TZ: ${TZ}
+
+volumes:
+  zb2mqtt:
+    driver: local
+    driver_opts: &opts
+      type: none
+      o: bind
+      device: /home/arinono/docker-host/hamac/zb2mqtt
+
+  mosquitto_config:
+    driver: local
+    driver_opts:
+      <<: *opts
+      device: /home/arinono/docker-host/hamac/mosquitto/config
+
+  mosquitto_data:
+    driver: local
+    driver_opts:
+      <<: *opts
+      device: /home/arinono/docker-host/hamac/mosquitto/data
+
+  mosquitto_log:
+    driver: local
+    driver_opts:
+      <<: *opts
+      device: /home/arinono/docker-host/hamac/mosquitto/log
+
+  ha:
+    driver: local
+    driver_opts:
+      <<: *opts
+      device: /home/arinono/docker-host/hamac/ha
+
+#  wg:
+#    driver: local
+#    driver_opts:
+#      <<: *opts
+#      device: /home/arinono/docker-host/wg
+
+services:
+  mqtt_broker:
+    <<: *defaults
+    container_name: mqtt_broker
+    image: eclipse-mosquitto
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - mosquitto_config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - 1883:1883
+      - 9001:9001
+    user: 1000:1000
+
+  zb2mqtt:
+    <<: *defaults
+    container_name: zb2mqtt
+    image: koenkk/zigbee2mqtt
+    user: 1000:1000
+    depends_on:
+      - mqtt_broker
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /run/udev:/run/udev:ro
+      - zb2mqtt:/app/data
+    ports:
+      - 8080:8080
+    devices:
+      - /dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220813084958-if00:/dev/ttyACM0:rwm
+
+  ha:
+    <<: *defaults
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ha:/config
+    environment:
+      <<: *env
+      DISABLE_JEMALLOC: true
+    privileged: true
+    network_mode: host
+
+#  wg:
+#    <<: *defaults
+#    container_name: wireguard
+#    image: lscr.io/linuxserver/wireguard:latest
+#    volumes:
+#      - /lib/modules:/lib/modules
+#      - wg:/config
+#    ports:
+#      - 51820:51820/udp
+#    cap_add:
+#      - NET_ADMIN
+#      - SYS_MODULE
+#    sysctls:
+#      - "net.ipv4.conf.all.src_valid_mark=1"
+#    environment:
+#      <<: *env
+#      PUID: 1000
+#      GUID: 1000
+#      PEERS: asarino
+#      INTERNAL_SUBNET: 10.0.4.1
